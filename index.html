@@ -1,0 +1,978 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Time Flow - 궁극의 시간 관리 솔루션</title>
+    <link rel="icon" href="icon.png" type="image/png">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* 라이트 모드 (기본) */
+        :root {
+            --bg-color: #f7f9fc; --grid-color: rgba(0, 0, 0, 0.04);
+            --node-bg: #ffffff; --text-main: #37352f; --text-sub: #7a7a7a;
+            --input-bg: #f9f9f9; --input-border: #eee;
+            --primary: #a78bfa; /* 메인 컬러 보라색 톤으로 통일 */
+            --start-node: #eb5757;
+            --ease: cubic-bezier(0.23, 1, 0.32, 1);
+            --panel-bg: rgba(255, 255, 255, 0.85);
+            --trail-bg: rgba(167, 139, 250, 0.6);
+            --trail-glow: rgba(167, 139, 250, 0.3);
+            --cursor-img: url('pointer_black.png');
+            --toast-timer-bg: #000000;
+        }
+
+        /* 다크 모드 */
+        body.dark-mode {
+            --bg-color: #111111; --grid-color: rgba(255, 255, 255, 0.03);
+            --node-bg: #222222; --text-main: #f0f0f0; --text-sub: #aaaaaa;
+            --input-bg: #1a1a1a; --input-border: #333;
+            --panel-bg: rgba(25, 25, 25, 0.85);
+            --primary: #a78bfa;
+            --trail-bg: var(--primary);
+            --trail-glow: var(--primary);
+            --cursor-img: url('pointer_white.png');
+            --toast-timer-bg: #ffffff;
+        }
+
+        * { cursor: var(--cursor-img), auto !important; touch-action: manipulation; }
+        button, .icon-btn, .port, .track-item, input[type="range"], .color-picker, .slider, .volume-pill { cursor: var(--cursor-img), pointer !important; }
+        input[type="text"], textarea, input[type="number"] { cursor: var(--cursor-img), text !important; }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            background-color: var(--bg-color); color: var(--text-main);
+            font-family: 'Nunito', 'Pretendard', sans-serif; overflow: hidden; user-select: none;
+            transition: background-color 0.3s, color 0.3s;
+            touch-action: none; /* 모바일에서 캔버스 스크롤 방지 (드래그 지원용) */
+        }
+
+        .mouse-trail {
+            position: absolute; width: 12px; height: 12px;
+            background: var(--trail-bg); border-radius: 50%; pointer-events: none; z-index: 9999;
+            transition: opacity 0.3s ease-out, transform 0.3s ease-out;
+            transform: translate(-50%, -50%) scale(1); box-shadow: 0 0 12px var(--trail-glow); opacity: 0.8;
+        }
+
+        .viewport {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background-image: linear-gradient(to right, var(--grid-color) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .canvas-container { position: absolute; top: 0; left: 0; width: 0; height: 0; transform-origin: 0 0; }
+
+        .top-bar {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            background: var(--panel-bg); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            padding: 10px 25px; border-radius: 50px; display: flex; gap: 15px; align-items: center; z-index: 100;
+            border: 1px solid var(--grid-color); box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+        }
+        button.ctrl-btn {
+            background: var(--node-bg); color: var(--text-main); border: 1px solid var(--input-border);
+            padding: 8px 18px; border-radius: 20px; font-weight: 700; transition: 0.3s;
+        }
+        button.ctrl-btn:hover { filter: brightness(0.95); transform: translateY(-1px); }
+
+        .top-right-ui { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; z-index: 100; }
+        .icon-btn {
+            width: 45px; height: 45px; border-radius: 50%; background: var(--panel-bg);
+            border: 1px solid var(--grid-color); box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+            display: flex; justify-content: center; align-items: center; font-size: 1.2em; transition: 0.3s; color: var(--text-main); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+        }
+        .icon-btn:hover { transform: scale(1.1); background: var(--primary); color: white; border-color: var(--primary); }
+        
+        .side-panel {
+            position: absolute; top: 75px; right: 20px; width: 320px; max-height: 500px;
+            background: var(--panel-bg); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border: 1px solid var(--grid-color);
+            border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); padding: 20px;
+            z-index: 150; display: none; flex-direction: column; gap: 15px; overflow-y: auto;
+        }
+        .side-panel.active { display: flex; animation: slideDown 0.3s var(--ease); }
+        @keyframes slideDown { from{ opacity:0; transform: translateY(-10px); } to{ opacity:1; transform: translateY(0); } }
+        .side-panel h3 { margin: 0; font-size: 1.1em; border-bottom: 2px solid var(--primary); padding-bottom: 8px; display: flex; justify-content: space-between;}
+        
+        .switch { position: relative; display: inline-block; width: 34px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 14px; width: 14px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(14px); }
+
+        .todo-item { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--input-bg); border-radius: 8px; border: 1px solid transparent; transition: all 0.3s var(--ease); gap: 8px;}
+        .todo-text { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .todo-actions { display: flex; align-items: center; gap: 5px; }
+        .delete-todo-btn { background: none; border: none; font-size: 0.9em; color: #eb5757; transition: 0.2s; padding: 0; display:flex; align-items:center; justify-content:center; width:20px; height:20px;}
+        .delete-todo-btn:hover { transform: scale(1.2); }
+        .todo-item.done .todo-text { text-decoration: line-through; color: var(--text-sub); }
+        .todo-input-wrap { display: flex; gap: 5px; }
+        .todo-input-wrap input { flex:1; padding: 8px; border-radius: 8px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text-main); font-family: inherit;}
+
+        .setting-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--input-border); }
+        .lang-select { padding: 4px 8px; border-radius: 6px; border: 1px solid var(--input-border); background: var(--input-bg); color: var(--text-main); font-family: inherit; font-weight: bold; outline: none; }
+
+        /* ================== 모달 (사용법) UI ================== */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
+            z-index: 9999; display: none; justify-content: center; align-items: center;
+            opacity: 0; transition: opacity 0.3s ease;
+        }
+        .modal-overlay.show { display: flex; opacity: 1; }
+        .modal-content {
+            background: var(--panel-bg); border: 1px solid var(--grid-color);
+            border-radius: 24px; padding: 30px; width: 90%; max-width: 500px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.2); transform: translateY(20px);
+            transition: transform 0.3s cubic-bezier(0.23, 1, 0.32, 1);
+            display: flex; flex-direction: column; gap: 15px; line-height: 1.6;
+        }
+        .modal-overlay.show .modal-content { transform: translateY(0); }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 2px solid var(--primary); padding-bottom: 10px; }
+        .modal-header h2 { margin: 0; font-size: 1.5em; color: var(--text-main); }
+        .modal-close { background: none; border: none; font-size: 1.5em; color: var(--text-sub); transition: 0.2s; }
+        .modal-close:hover { color: var(--start-node); transform: scale(1.1); }
+        .guide-item { background: var(--input-bg); padding: 15px; border-radius: 12px; border: 1px solid var(--input-border); }
+        .guide-item strong { color: var(--primary); font-size: 1.1em; display: block; margin-bottom: 5px; }
+
+        /* 노드 디자인 */
+        .node {
+            position: absolute; min-width: 280px; min-height: 180px; width: 320px; background: var(--node-bg);
+            border-radius: 16px; border: 2px solid var(--node-color, #e9e9e9);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05); z-index: 10;
+            display: flex; flex-direction: column; transition: box-shadow 0.3s, filter 0.5s, background 0.5s; 
+            resize: both; overflow: hidden;
+        }
+        .node.selected { box-shadow: 0 0 0 3px var(--node-color, var(--primary)), 0 10px 30px rgba(0,0,0,0.1); z-index: 20; }
+        .node.done-state { background: var(--input-bg); filter: grayscale(0.6); border-color: #b0b0b0 !important; }
+
+        .check-mark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) scale(0); font-size: 100px; z-index: 100; pointer-events: none; opacity: 0; filter: drop-shadow(0 10px 10px rgba(0,0,0,0.2)); }
+        .node.done-state .check-mark { animation: popCheck 2s var(--ease) forwards; }
+        @keyframes popCheck { 0% { transform: translate(-50%, -50%) scale(0) rotate(-20deg); opacity: 0; } 40% { transform: translate(-50%, -50%) scale(1.3) rotate(10deg); opacity: 1; } 70% { transform: translate(-50%, -50%) scale(1) rotate(0deg); opacity: 1; } 100% { transform: translate(-50%, -50%) scale(1.5); opacity: 0; } }
+
+        .node-header { padding: 12px 15px; font-weight: 800; display: flex; justify-content: space-between; border-bottom: 1px solid var(--input-border); background: rgba(0,0,0,0.02); border-radius: 14px 14px 0 0; touch-action: none;}
+        .node-header-left { display: flex; gap: 8px; color: var(--node-color, var(--text-main)); pointer-events: none; }
+        .color-picker { border: none; width: 24px; height: 24px; border-radius: 50%; padding: 0; background: transparent; }
+        .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+        .color-picker::-webkit-color-swatch { border: none; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.1); }
+
+        .node-content { padding: 15px; display: flex; flex-direction: column; gap: 10px; flex-grow: 1; }
+        .node-content input, .node-content textarea { width: 100%; background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-main); padding: 8px 10px; border-radius: 8px; box-sizing: border-box; font-family: inherit; }
+        .node-content input:focus, .node-content textarea:focus { border-color: var(--node-color, var(--primary)); outline: none; }
+        .node-content textarea { resize: none; flex-grow: 1; min-height: 50px; }
+        
+        .time-input-wrap { display: flex; align-items: center; gap: 5px; font-size: 0.9em; }
+        .time-input-wrap input { width: 50px; text-align: center; border: 1px solid var(--input-border); border-radius: 6px; background: var(--input-bg); color: var(--text-main); padding: 4px;}
+
+        .node-timer-area { border-top: 1px solid var(--input-border); padding: 10px 15px; display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.02); margin-top: auto;}
+        .timer-display { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.1em; color: var(--text-sub); }
+        .timer-display.active { color: var(--node-color, var(--primary)); }
+        .play-btn { background: var(--input-bg); border: 1px solid var(--input-border); color: var(--text-main); padding: 5px 12px; border-radius: 10px; font-weight: bold; transition: 0.2s; font-family: inherit;}
+        .play-btn.running { background: var(--node-color, var(--primary)); color: white; border-color: transparent;}
+
+        .port { position: absolute; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; background: var(--node-bg); border: 3px solid var(--node-color, #aaa); border-radius: 50%; z-index: 15; transition: 0.2s; touch-action: none;}
+        .port:hover { transform: translateY(-50%) scale(1.3); background: var(--node-color, #aaa); }
+        .port.in { left: -9px; } .port.out { right: -9px; }
+
+        #svg-canvas { position: absolute; top: 0; left: 0; width: 10000px; height: 10000px; pointer-events: none; z-index: 5; overflow: visible; }
+        .connection-path { stroke: #b0b0b0; stroke-width: 3.5; fill: none; stroke-linecap: round; pointer-events: stroke; transition: stroke 0.2s; }
+        .temp-path { stroke: var(--primary); stroke-width: 3; fill: none; stroke-dasharray: 6; stroke-linecap: round; }
+
+        /* 뮤직 플레이어 */
+        .music-player { 
+            position: fixed; top: 20px; left: 20px; width: 300px; min-width: 250px; max-width: 600px; height: auto; min-height: 200px; max-height: 80vh;
+            background: var(--panel-bg); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); border-radius: 16px; 
+            border: 1px solid var(--grid-color); box-shadow: 0 8px 20px rgba(0,0,0,0.1); padding: 15px; 
+            z-index: 90; display: flex; flex-direction: column; gap: 12px; 
+            resize: both; overflow: hidden; touch-action: none;
+        }
+        
+        .music-header { display: flex; justify-content: space-between; align-items: center; }
+        .music-header h4 { margin: 0; font-size: 1em; color: var(--primary); pointer-events: none; display: flex; align-items: center; gap: 8px;}
+        .spin-cd { font-size: 1.2em; display: inline-block; animation: spin 3s linear infinite; }
+        .spin-cd.paused { animation-play-state: paused; }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        .track-list { 
+            flex-grow: 1; overflow-y: auto; font-size: 0.85em; 
+            border: 1px solid var(--input-border); border-radius: 8px; padding: 5px; background: var(--input-bg);
+            touch-action: pan-y; /* 트랙 리스트 내부는 스크롤 허용 */
+        }
+        .track-item { display: flex; justify-content: space-between; align-items: center; padding: 8px; border-radius: 6px; margin-bottom: 2px; transition: all 0.3s; }
+        .track-name-wrap { display: flex; align-items: center; overflow: hidden; flex: 1; }
+        .track-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+        .track-item.playing { background: var(--primary) !important; color: white !important; font-weight: 900; box-shadow: 0 4px 10px rgba(167, 139, 250, 0.4); transform: scale(1.02); }
+
+        .visualizer { display: none; align-items: flex-end; gap: 2px; height: 12px; margin-right: 8px; }
+        .track-item.playing .visualizer { display: flex; }
+        .visualizer span { width: 3px; background: white; border-radius: 2px; animation: bounce 0.5s infinite alternate; }
+        .visualizer span:nth-child(2) { animation-delay: 0.15s; }
+        .visualizer span:nth-child(3) { animation-delay: 0.3s; }
+
+        .controls-wrapper { display: flex; flex-direction: column; gap: 8px; background: rgba(0,0,0,0.02); padding: 10px; border-radius: 12px; border: 1px solid var(--input-border); }
+        .timeline-container { display: flex; align-items: center; gap: 8px; font-size: 0.75em; color: var(--text-sub); }
+        input[type="range"] { flex: 1; -webkit-appearance: none; height: 4px; background: #ddd; border-radius: 2px; outline: none; }
+        input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--primary); box-shadow: 0 0 5px rgba(0,0,0,0.3); }
+
+        .player-controls { display: flex; justify-content: center; align-items: center; gap: 15px; }
+        .player-controls button { background: none; border: none; font-size: 1.3em; color: var(--text-main); }
+
+        .volume-pill {
+            position: fixed; z-index: 100; width: 44px; background: var(--panel-bg); border: 1px solid var(--grid-color);
+            border-radius: 22px; box-shadow: 0 4px 15px rgba(0,0,0,0.15); display: flex; flex-direction: column; align-items: center; padding: 10px 0;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); transition: height 0.3s var(--ease); height: 44px; overflow: hidden;
+        }
+        .volume-pill.expanded { height: 160px; }
+        #vol-toggle-btn { background: none; border: none; font-size: 1.2em; color: var(--text-main); margin-top: 2px;}
+        .vol-slider-wrap { height: 100px; width: 100%; display: flex; justify-content: center; align-items: center; margin-top: 30px; opacity: 0; visibility: hidden; pointer-events: none; }
+        .volume-pill.expanded .vol-slider-wrap { opacity: 1; visibility: visible; pointer-events: auto; }
+        #volume-bar { width: 90px; height: 4px; transform: rotate(-90deg); transform-origin: center; }
+
+        .add-music-btn { padding: 8px; font-size: 0.85em; background: var(--input-bg); color: var(--text-main); border: 1px solid var(--input-border); border-radius: 8px; font-weight: bold; }
+        .add-music-btn:hover { background: var(--primary); color: white; }
+
+        .add-btn { position: fixed; bottom: 40px; right: 40px; width: 60px; height: 60px; background: var(--primary); border-radius: 50%; display: flex; justify-content: center; align-items: center; color: white; font-size: 32px; box-shadow: 0 8px 25px rgba(167, 139, 250, 0.4); z-index: 100; transition: 0.3s; }
+        .add-btn:hover { transform: scale(1.1) rotate(90deg); }
+
+        .toast-notification { position: fixed; bottom: 40px; left: 20px; width: 340px; background: var(--panel-bg); border-radius: 16px; border: 1px solid var(--grid-color); box-shadow: 0 10px 30px rgba(0,0,0,0.15); z-index: 1000; overflow: hidden; backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); transform: translateX(-120%); transition: transform 0.5s var(--ease), opacity 0.3s; }
+        .toast-notification.show { transform: translateX(0); }
+        .toast-header { padding: 12px 15px; font-weight: 800; border-bottom: 1px solid var(--input-border); display: flex; align-items: center; gap: 8px; font-size: 1.1em;}
+        .toast-header .badge { background: var(--primary); color: white; padding: 3px 10px; border-radius: 12px; font-size: 0.75em; }
+        .toast-body { padding: 15px; font-size: 0.9em; line-height: 1.7; }
+        .toast-progress { height: 4px; background: var(--toast-timer-bg); width: 100%; transform-origin: left; }
+        .toast-notification.show .toast-progress { animation: toastTimer 8s linear forwards; }
+        @keyframes toastTimer { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+
+        /* =========================================================
+           📱 모바일 반응형 처리 (화면 768px 이하)
+           ========================================================= */
+        @media (max-width: 768px) {
+            /* 1. 하단 Dock 스타일로 메뉴 이동 */
+            .top-right-ui {
+                top: auto; bottom: 20px; left: 50%; transform: translateX(-50%); right: auto;
+                background: var(--panel-bg); padding: 10px 20px; border-radius: 30px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.15); border: 1px solid var(--grid-color);
+                backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px);
+            }
+            .icon-btn { width: 40px; height: 40px; font-size: 1em; box-shadow: none; border: none; background: transparent; }
+            .icon-btn:hover { background: rgba(167, 139, 250, 0.2); color: var(--primary); transform: scale(1.1); }
+            
+            /* 2. Top Bar 간소화 */
+            .top-bar { top: 15px; padding: 8px 15px; width: 90%; gap: 10px; justify-content: space-between; }
+            .top-bar span { font-size: 1.1em; }
+            button.ctrl-btn { padding: 6px 12px; font-size: 0.85em; }
+
+            /* 3. 패널 화면 중앙 배치 */
+            .side-panel {
+                top: 50%; left: 50%; right: auto; bottom: auto; transform: translate(-50%, -50%) scale(0.9);
+                width: 90%; max-width: 350px; max-height: 70vh; z-index: 999;
+            }
+            .side-panel.active { transform: translate(-50%, -50%) scale(1); animation: popInMobile 0.3s var(--ease); }
+            @keyframes popInMobile { from { opacity: 0; transform: translate(-50%, -50%) scale(0.9); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+
+            /* 4. 뮤직 플레이어 숨기기/위치조정 & 볼륨 조절 숨기기 */
+            .music-player { top: 80px; left: 50%; transform: translateX(-50%); width: 90%; max-width: 350px; height: auto; max-height: 40vh;}
+            .volume-pill { display: none !important; }
+
+            /* 5. 플로팅 버튼 위치 조정 (Dock 위로) */
+            .add-btn { bottom: 90px; right: 20px; width: 50px; height: 50px; font-size: 26px; }
+            .toast-notification { bottom: 90px; width: 90%; left: 5%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="audio-init-overlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;display:flex;justify-content:center;align-items:center;color:white;flex-direction:column;">
+        <h2 id="t-welcome">환영합니다! 화면을 클릭하여 시작하세요</h2>
+        <p id="t-welcome-sub">방문해주셔서 감사합니다!</p>
+    </div>
+
+    <div class="modal-overlay" id="help-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="t-guide-title">💡 Time Flow 사용법</h2>
+                <button class="modal-close" id="btn-close-help">✖</button>
+            </div>
+            <div class="guide-item">
+                <strong>➕ 노드 생성</strong>
+                <span id="t-guide-1">우측 하단의 '+' 버튼을 눌러 새로운 할 일(Task)을 만드세요.</span>
+            </div>
+            <div class="guide-item">
+                <strong>🔗 흐름 연결</strong>
+                <span id="t-guide-2">노드 우측의 포트(점)를 드래그해서 다른 노드에 연결하여 작업 순서를 만드세요.</span>
+            </div>
+            <div class="guide-item">
+                <strong>⏱️ 뽀모도로 타이머</strong>
+                <span id="t-guide-3">각 노드에서 예상 시간을 설정하고 '시작'을 누르세요. 0초가 되면 알람이 울립니다.</span>
+            </div>
+            <div class="guide-item">
+                <strong>🎵 나만의 BGM</strong>
+                <span id="t-guide-4">좌측 플레이어에 몰입을 도와줄 음악을 넣고 집중 모드에 들어가세요.</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-notification" id="timer-toast" style="border: 2px solid var(--primary);">
+        <div class="toast-header"><span class="badge" style="background:#eb5757;">알람</span> <span id="t-timer-toast-title">타이머가 끝났습니다.</span></div>
+        <div class="toast-body" style="display:flex; flex-direction:column; gap:10px;">
+            <div style="font-size: 2.5em; font-weight: bold; text-align: center; color: var(--primary);">00:00</div>
+            <div style="display:flex; gap:10px; justify-content:center; margin-top:10px;">
+                <button class="ctrl-btn" id="btn-timer-ok" style="flex:1;">확인</button>
+                <button class="ctrl-btn" id="btn-timer-snooze" style="flex:1; background:var(--primary); color:white; border-color:var(--primary);">다시알림</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="top-right-ui">
+        <div class="icon-btn" id="btn-help" title="How to Use">💡</div>
+        <div class="icon-btn" id="btn-timer" title="Timer">⏱️</div>
+        <div class="icon-btn" id="btn-todo" title="To-Do List">📝</div>
+        <div class="icon-btn" id="btn-settings" title="Settings">⚙️</div>
+    </div>
+
+    <div class="side-panel" id="panel-settings">
+        <h3><span id="t-settings">⚙️ 설정</span> <button onclick="togglePanel('settings')" style="background:none;border:none;color:var(--text-sub);">✖</button></h3>
+        <div class="setting-row">
+            <span id="t-lang">🌐 언어 (Language)</span>
+            <select class="lang-select" id="lang-select">
+                <option value="ko">한국어</option>
+                <option value="en">English</option>
+            </select>
+        </div>
+        <div class="setting-row">
+            <span id="t-dark">🌙 다크 모드</span>
+            <label class="switch"><input type="checkbox" id="toggle-darkmode"><span class="slider"></span></label>
+        </div>
+        <div class="setting-row">
+            <span id="t-sfx">🔊 효과음</span>
+            <label class="switch"><input type="checkbox" id="toggle-sfx" checked><span class="slider"></span></label>
+        </div>
+    </div>
+
+    <div class="side-panel" id="panel-timer">
+        <h3><span id="t-general-timer-title">⏱️ 타이머</span> <button onclick="togglePanel('timer')" style="background:none;border:none;color:var(--text-sub);">✖</button></h3>
+        <div style="text-align:center; font-size: 3em; font-weight: 800; margin: 15px 0; color: var(--primary); font-variant-numeric: tabular-nums;" id="g-timer-display">05:00</div>
+        
+        <div style="display:flex; gap:10px; justify-content:center; margin-bottom: 15px;">
+            <div class="todo-input-wrap"><input type="number" id="g-timer-m" value="5" min="0" style="width:60px; text-align:center;"> <span style="align-self:center; font-weight:bold;">분</span></div>
+            <div class="todo-input-wrap"><input type="number" id="g-timer-s" value="0" min="0" max="59" style="width:60px; text-align:center;"> <span style="align-self:center; font-weight:bold;">초</span></div>
+        </div>
+        <div style="display:flex; gap:10px; justify-content:center;">
+            <button class="ctrl-btn" id="g-timer-start" style="flex:1;">▶ 시작</button>
+            <button class="ctrl-btn" id="g-timer-stop" style="flex:1;">⏸ 중지</button>
+            <button class="ctrl-btn" id="g-timer-reset" style="flex:1;">🔄 리셋</button>
+        </div>
+    </div>
+
+    <div class="side-panel" id="panel-todo">
+        <h3><span id="t-todo-title">📝 오늘 할 일</span> <button onclick="togglePanel('todo')" style="background:none;border:none;color:var(--text-sub);">✖</button></h3>
+        <div id="todo-list-container" style="display:flex; flex-direction:column; gap:8px;"></div>
+        <div class="todo-input-wrap">
+            <input type="text" id="todo-input" placeholder="새로운 할 일 입력">
+            <button class="ctrl-btn" id="add-todo-btn">+</button>
+        </div>
+    </div>
+
+    <div class="music-player is-paused" id="music-player">
+        <div class="music-header">
+            <h4 id="t-playlist"><span class="spin-cd paused" id="spin-cd">💿</span> My Playlist</h4>
+        </div>
+        <input type="file" id="music-upload" multiple accept="audio/*" style="display:none;">
+        <button class="add-music-btn" id="btn-add-music" onclick="document.getElementById('music-upload').click()">📂 곡 추가하기</button>
+        <div class="track-list" id="track-list"></div>
+        <div class="controls-wrapper">
+            <div class="timeline-container">
+                <span id="current-time">0:00</span>
+                <input type="range" id="progress-bar" min="0" max="100" value="0">
+                <span id="total-time">0:00</span>
+            </div>
+            <div class="player-controls">
+                <button id="prev-btn">⏮</button>
+                <button id="music-play-btn">▶</button>
+                <button id="next-btn">⏭</button>
+            </div>
+        </div>
+        <audio id="audio-player" src="Love.mp3"></audio>
+    </div>
+
+    <div class="volume-pill" id="volume-pill">
+        <button id="vol-toggle-btn">🔊</button>
+        <div class="vol-slider-wrap">
+            <input type="range" id="volume-bar" min="0" max="1" step="0.01" value="1">
+        </div>
+    </div>
+
+    <div class="top-bar">
+        <span style="font-weight: 800; color: var(--primary); font-size: 1.2rem;">Time Flow</span>
+        <button class="ctrl-btn" id="save-btn">📥 저장</button>
+        <button class="ctrl-btn" id="load-btn">📂 불러오기</button>
+        <input type="file" id="file-upload" accept=".json" style="display:none;">
+    </div>
+
+    <div class="viewport" id="viewport">
+        <div class="canvas-container" id="canvas-container">
+            <svg id="svg-canvas"><path id="temp-line" class="temp-path" d=""></path></svg>
+        </div>
+    </div>
+
+    <div class="add-btn" id="add-btn">+</div>
+
+    <script>
+        // --- 언어 딕셔너리 ---
+        const dict = {
+            ko: {
+                welcome: "환영합니다! 화면을 클릭하세요", welcomeSub: "스마트폰 터치 드래그 완벽 지원!",
+                save: "📥 저장", load: "📂 불러오기",
+                settings: "⚙️ 설정", lang: "🌐 언어 (Language)", dark: "🌙 다크 모드", sfx: "🔊 효과음",
+                todoTitle: "📝 할 일 목록", todoPlace: "할 일 입력...", todoEmpty: "할 일이 없습니다.",
+                playlist: "My Playlist", addMusic: "📂 곡 추가하기",
+                startTitle: "프로젝트 시작!", startDesc: "우측 점을 드래그해서\n노드를 연결해 보세요!",
+                target: "목표: ", min: "분 ", sec: "초", wait: "대기", done: "완료!", stop: "⏸ 중지", reset: "🔄 리셋", startBtn: "▶ 시작",
+                taskTitleHolder: "어떤 작업을 할까요?", taskDescHolder: "작업 상세 내용...",
+                timerTitle: "⏱️ 타이머", timerEndTitle: "타이머 종료", btnOk: "확인", btnSnooze: "다시알림",
+                guideTitle: "💡 Time Flow 사용법",
+                g1: "우측 하단의 '+' 버튼을 눌러 새로운 할 일(Task)을 만드세요.",
+                g2: "노드 우측의 포트(점)를 드래그해서 다른 노드에 연결하세요. (스마트폰 터치 완벽 지원)",
+                g3: "각 노드에서 예상 시간을 설정하고 '시작'을 누르세요. 0초가 되면 알람이 울립니다.",
+                g4: "좌측 플레이어에 몰입을 도와줄 음악을 넣고 집중 모드에 들어가세요."
+            },
+            en: {
+                welcome: "Welcome! Click to start", welcomeSub: "Mobile Touch Fully Supported!",
+                save: "📥 Save", load: "📂 Load",
+                settings: "⚙️ Settings", lang: "🌐 Language", dark: "🌙 Dark Mode", sfx: "🔊 SFX",
+                todoTitle: "📝 To-Do List", todoPlace: "Enter task...", todoEmpty: "No tasks yet.",
+                playlist: "My Playlist", addMusic: "📂 Add Music",
+                startTitle: "Start Project!", startDesc: "Drag the right dot\nto connect nodes!",
+                target: "Goal: ", min: "m ", sec: "s", wait: "Wait", done: "Done!", stop: "⏸ Pause", reset: "🔄 Reset", startBtn: "▶ Start",
+                taskTitleHolder: "Task Title?", taskDescHolder: "Task details...",
+                timerTitle: "⏱️ Timer", timerEndTitle: "Timer Finished", btnOk: "OK", btnSnooze: "Snooze",
+                guideTitle: "💡 How to use Time Flow",
+                g1: "Click the '+' button at the bottom right to create a new task.",
+                g2: "Drag the port (dot) on the right of a node to connect to another node. (Touch support included!)",
+                g3: "Set the estimated time for each node and click 'Start'. An alarm sounds at 0.",
+                g4: "Add your favorite focus music to the player on the left."
+            }
+        };
+
+        let currentLang = 'ko';
+
+        function updateLanguage() {
+            const d = dict[currentLang];
+            document.getElementById('t-welcome').innerText = d.welcome;
+            document.getElementById('t-welcome-sub').innerText = d.welcomeSub;
+            document.getElementById('save-btn').innerText = d.save;
+            document.getElementById('load-btn').innerText = d.load;
+            document.getElementById('t-settings').innerText = d.settings;
+            document.getElementById('t-lang').innerText = d.lang;
+            document.getElementById('t-dark').innerText = d.dark;
+            document.getElementById('t-sfx').innerText = d.sfx;
+            document.getElementById('t-todo-title').innerText = d.todoTitle;
+            document.getElementById('todo-input').placeholder = d.todoPlace;
+            document.getElementById('t-playlist').innerHTML = `<span class="spin-cd paused" id="spin-cd">💿</span> ${d.playlist}`;
+            document.getElementById('btn-add-music').innerText = d.addMusic;
+            document.getElementById('t-general-timer-title').innerText = d.timerTitle;
+            document.getElementById('t-timer-toast-title').innerText = d.timerEndTitle;
+            document.getElementById('btn-timer-ok').innerText = d.btnOk;
+            document.getElementById('btn-timer-snooze').innerText = d.btnSnooze;
+            
+            document.getElementById('t-guide-title').innerText = d.guideTitle;
+            document.getElementById('t-guide-1').innerText = d.g1;
+            document.getElementById('t-guide-2').innerText = d.g2;
+            document.getElementById('t-guide-3').innerText = d.g3;
+            document.getElementById('t-guide-4').innerText = d.g4;
+
+            renderTodos();
+            
+            nodes.forEach(n => {
+                if(n.type === 'start') {
+                    if(n.element.querySelector('.title-text').innerText === dict[currentLang==='ko'?'en':'ko'].startTitle) {
+                        n.element.querySelector('.title-text').innerText = d.startTitle;
+                    }
+                } else {
+                    const titleInput = n.element.querySelector('.title-input');
+                    const descInput = n.element.querySelector('.desc-input');
+                    if(titleInput) titleInput.placeholder = d.taskTitleHolder;
+                    if(descInput) descInput.placeholder = d.taskDescHolder;
+                }
+                updateNodeUI(n);
+            });
+        }
+
+        document.getElementById('lang-select').addEventListener('change', (e) => { currentLang = e.target.value; updateLanguage(); });
+
+        // --- 💡 가이드 모달 제어 ---
+        const helpModal = document.getElementById('help-modal');
+        document.getElementById('btn-help').addEventListener('click', () => helpModal.classList.add('show'));
+        document.getElementById('btn-close-help').addEventListener('click', () => helpModal.classList.remove('show'));
+        helpModal.addEventListener('pointerdown', (e) => { if(e.target === helpModal) helpModal.classList.remove('show'); });
+
+
+        // --- 오디오 & 초기화 ---
+        let audioCtx; let sfxEnabled = true;
+        document.getElementById('audio-init-overlay').addEventListener('pointerdown', function() {
+            if(!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            this.style.display = 'none';
+        });
+
+        function playSound(type) {
+            if (!sfxEnabled || !audioCtx) return;
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            const now = audioCtx.currentTime;
+            
+            if (type === 'done') { 
+                osc.type = 'sine'; osc.frequency.setValueAtTime(440, now); osc.frequency.setValueAtTime(554.37, now + 0.1); osc.frequency.setValueAtTime(659.25, now + 0.2); osc.frequency.setValueAtTime(880, now + 0.3);
+                gain.gain.setValueAtTime(0, now); gain.gain.linearRampToValueAtTime(0.15, now + 0.05); gain.gain.exponentialRampToValueAtTime(0.001, now + 1.5);
+                osc.start(now); osc.stop(now + 1.5);
+            }
+        }
+
+        // --- 패널 제어 ---
+        const panels = { settings: document.getElementById('panel-settings'), todo: document.getElementById('panel-todo'), timer: document.getElementById('panel-timer') };
+        function togglePanel(target) { Object.keys(panels).forEach(key => { if(key === target) panels[key].classList.toggle('active'); else panels[key].classList.remove('active'); }); }
+        document.getElementById('btn-settings').addEventListener('click', () => togglePanel('settings'));
+        document.getElementById('btn-todo').addEventListener('click', () => togglePanel('todo'));
+        document.getElementById('btn-timer').addEventListener('click', () => togglePanel('timer'));
+        
+        document.getElementById('toggle-darkmode').addEventListener('change', (e) => document.body.classList.toggle('dark-mode', e.target.checked));
+        document.getElementById('toggle-sfx').addEventListener('change', (e) => sfxEnabled = e.target.checked);
+
+        // --- 범용 타이머 ---
+        const gTimerDisplay = document.getElementById('g-timer-display');
+        const gTimerM = document.getElementById('g-timer-m');
+        const gTimerS = document.getElementById('g-timer-s');
+        const timerToast = document.getElementById('timer-toast');
+        let gTimer = { remaining: 0, interval: null, isRunning: false };
+        let alarmInterval = null;
+
+        function updateGTimerDisplay() {
+            const m = Math.floor(gTimer.remaining / 60).toString().padStart(2, '0');
+            const s = (gTimer.remaining % 60).toString().padStart(2, '0');
+            gTimerDisplay.innerText = `${m}:${s}`;
+        }
+        function syncInputToRemaining() { gTimer.remaining = (parseInt(gTimerM.value) || 0) * 60 + (parseInt(gTimerS.value) || 0); updateGTimerDisplay(); }
+        gTimerM.addEventListener('input', syncInputToRemaining); gTimerS.addEventListener('input', syncInputToRemaining);
+
+        function playAlarmBeep() {
+            if (!sfxEnabled || !audioCtx) return;
+            const osc = audioCtx.createOscillator(); const gain = audioCtx.createGain();
+            osc.connect(gain); gain.connect(audioCtx.destination);
+            osc.type = 'square'; osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+            gain.gain.setValueAtTime(0, audioCtx.currentTime); gain.gain.linearRampToValueAtTime(0.1, audioCtx.currentTime + 0.05); gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
+            osc.start(audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        document.getElementById('g-timer-start').addEventListener('click', () => {
+            if (gTimer.isRunning || gTimer.remaining <= 0) return;
+            gTimer.isRunning = true;
+            gTimer.interval = setInterval(() => {
+                gTimer.remaining--; updateGTimerDisplay();
+                if (gTimer.remaining <= 0) {
+                    clearInterval(gTimer.interval); gTimer.isRunning = false;
+                    timerToast.classList.add('show'); timerToast.style.display = 'block';
+                    if (sfxEnabled && audioCtx) { playAlarmBeep(); alarmInterval = setInterval(playAlarmBeep, 1000); }
+                }
+            }, 1000);
+        });
+
+        document.getElementById('g-timer-stop').addEventListener('click', () => { clearInterval(gTimer.interval); gTimer.isRunning = false; });
+        document.getElementById('g-timer-reset').addEventListener('click', () => { clearInterval(gTimer.interval); gTimer.isRunning = false; syncInputToRemaining(); });
+        document.getElementById('btn-timer-ok').addEventListener('click', () => { timerToast.classList.remove('show'); clearInterval(alarmInterval); });
+        document.getElementById('btn-timer-snooze').addEventListener('click', () => { timerToast.classList.remove('show'); clearInterval(alarmInterval); gTimerM.value = 5; gTimerS.value = 0; syncInputToRemaining(); document.getElementById('g-timer-start').click(); });
+
+        // --- To-Do ---
+        let todos = [];
+        const todoContainer = document.getElementById('todo-list-container');
+        const todoInput = document.getElementById('todo-input');
+        function renderTodos() {
+            todoContainer.innerHTML = todos.map((t, i) => `<div class="todo-item ${t.done ? 'done' : ''}"><span class="todo-text">${t.text}</span><div class="todo-actions"><label class="switch"><input type="checkbox" ${t.done ? 'checked' : ''} onchange="toggleTodo(${i})"><span class="slider"></span></label><button class="delete-todo-btn" onclick="deleteTodo(${i})">❌</button></div></div>`).join('');
+            if(todos.length === 0) todoContainer.innerHTML = `<div style="color:var(--text-sub); font-size:0.9em; text-align:center;">${dict[currentLang].todoEmpty}</div>`;
+        }
+        function addTodo() { if(!todoInput.value.trim()) return; todos.push({ text: todoInput.value.trim(), done: false }); todoInput.value = ''; renderTodos(); }
+        window.toggleTodo = (i) => { todos[i].done = !todos[i].done; renderTodos(); if(todos[i].done) playSound('done'); };
+        window.deleteTodo = (i) => { todos.splice(i, 1); renderTodos(); };
+        document.getElementById('add-todo-btn').addEventListener('click', addTodo);
+        todoInput.addEventListener('keydown', (e) => { if(e.key === 'Enter') addTodo(); });
+
+        // --- 캔버스 & 노드 (⭐️ 모바일 터치 대응을 위해 pointer 이벤트로 통합) ---
+        const viewport = document.getElementById('viewport');
+        const canvasContainer = document.getElementById('canvas-container');
+        const canvas = document.getElementById('svg-canvas');
+        const tempLine = document.getElementById('temp-line');
+        let scale = 1, panX = 0, panY = 0;
+        let isPanning = false, startMouseX, startMouseY, startPanX, startPanY;
+        let nodes = [], links = [], selectedNodeId = null, copiedNodeData = null;
+
+        function updateTransform() { canvasContainer.style.transform = `translate(${panX}px, ${panY}px) scale(${scale})`; }
+
+        viewport.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const newScale = Math.max(0.3, Math.min(scale + (e.deltaY > 0 ? -0.08 : 0.08), 2.5));
+            const mouseX = (e.clientX - panX) / scale; const mouseY = (e.clientY - panY) / scale;
+            scale = newScale; panX = e.clientX - (mouseX * scale); panY = e.clientY - (mouseY * scale);
+            updateTransform(); updateConnections();
+        }, { passive: false });
+
+        // ⭐️ mousedown -> pointerdown
+        viewport.addEventListener('pointerdown', (e) => {
+            if (e.target === viewport) {
+                isPanning = true; startMouseX = e.clientX; startMouseY = e.clientY; startPanX = panX; startPanY = panY;
+                selectNode(null); Object.keys(panels).forEach(k => panels[k].classList.remove('active'));
+                viewport.setPointerCapture(e.pointerId); // 화면 밖으로 나가도 트래킹
+            }
+        });
+
+        const musicPlayer = document.getElementById('music-player');
+        let playerDrag = { active: false, startX: 0, startY: 0, initialX: 0, initialY: 0 };
+        musicPlayer.addEventListener('pointerdown', (e) => {
+            if (e.offsetX > musicPlayer.offsetWidth - 20 && e.offsetY > musicPlayer.offsetHeight - 20) return;
+            if(['BUTTON','INPUT', 'SELECT', 'OPTION'].includes(e.target.tagName) || e.target.closest('.track-list') || e.target.closest('.controls-wrapper')) return;
+            playerDrag.active = true; playerDrag.startX = e.clientX; playerDrag.startY = e.clientY;
+            playerDrag.initialX = musicPlayer.offsetLeft; playerDrag.initialY = musicPlayer.offsetTop;
+            musicPlayer.setPointerCapture(e.pointerId);
+        });
+
+        let nodeDrag = { active: false, node: null, startX: 0, startY: 0, initialX: 0, initialY: 0 };
+        let linkDrag = { active: false, fromNode: null };
+
+        function startNodeDrag(e, nodeData) {
+            const rect = nodeData.element.getBoundingClientRect();
+            if (e.clientX > rect.right - 25 && e.clientY > rect.bottom - 25) return;
+            if(['INPUT', 'TEXTAREA', 'BUTTON'].includes(e.target.tagName) || e.target.classList.contains('port') || e.target.classList.contains('color-picker')) return;
+            selectNode(nodeData.id);
+            nodeDrag.active = true; nodeDrag.node = nodeData; nodeDrag.startX = e.clientX; nodeDrag.startY = e.clientY; nodeDrag.initialX = nodeData.x; nodeDrag.initialY = nodeData.y;
+            nodeData.element.setPointerCapture(e.pointerId);
+        }
+
+        // ⭐️ mousemove -> pointermove
+        window.addEventListener('pointermove', (e) => {
+            if (isPanning) { panX = startPanX + (e.clientX - startMouseX); panY = startPanY + (e.clientY - startMouseY); updateTransform(); }
+            if (playerDrag.active) { 
+                musicPlayer.style.left = playerDrag.initialX + (e.clientX - playerDrag.startX) + 'px'; 
+                musicPlayer.style.top = playerDrag.initialY + (e.clientY - playerDrag.startY) + 'px'; 
+            }
+            if (nodeDrag.active) {
+                nodeDrag.node.x = nodeDrag.initialX + (e.clientX - nodeDrag.startX) / scale;
+                nodeDrag.node.y = nodeDrag.initialY + (e.clientY - nodeDrag.startY) / scale;
+                nodeDrag.node.element.style.left = `${nodeDrag.node.x}px`; nodeDrag.node.element.style.top = `${nodeDrag.node.y}px`; updateConnections();
+            }
+            if (linkDrag.active) {
+                const p1 = linkDrag.fromNode.getOutPoint();
+                const mouseX = (e.clientX - panX) / scale; const mouseY = (e.clientY - panY) / scale;
+                const offset = Math.max(50, Math.abs(mouseX - p1.x) / 2);
+                tempLine.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x + offset} ${p1.y}, ${mouseX - offset} ${mouseY}, ${mouseX} ${mouseY}`);
+            }
+        });
+
+        // ⭐️ mouseup -> pointerup
+        window.addEventListener('pointerup', (e) => {
+            isPanning = false; playerDrag.active = false; nodeDrag.active = false;
+            if (linkDrag.active) {
+                linkDrag.active = false; tempLine.style.display = 'none';
+                // Touch 기기에서는 pointerup 이벤트의 target이 터치를 시작한 엘리먼트일 수 있으므로 위치 기반 파악
+                let targetEl = document.elementFromPoint(e.clientX, e.clientY);
+                if (targetEl && targetEl.classList.contains('in') && targetEl.dataset.nodeId) {
+                    const toNodeId = targetEl.dataset.nodeId; const fromNodeId = linkDrag.fromNode.id;
+                    if (fromNodeId !== toNodeId && !links.find(l => l.from === fromNodeId && l.to === toNodeId)) {
+                        links.push({ from: fromNodeId, to: toNodeId }); 
+                    }
+                }
+                updateConnections();
+            }
+        });
+
+        function createNode(type, x, y, data = {}) {
+            const id = data.id || 'node_' + Date.now() + Math.floor(Math.random()*1000);
+            const node = document.createElement('div');
+            node.className = `node ${type}`; node.id = id; node.style.left = `${x}px`; node.style.top = `${y}px`;
+            
+            if(data.width) node.style.width = data.width;
+            if(data.height) node.style.height = data.height;
+
+            const isStart = type === 'start'; const d = dict[currentLang];
+            const title = data.title || (isStart ? d.startTitle : '');
+            const desc = data.desc || '';
+            const minutes = data.minutes || 0; const seconds = data.seconds || 0;
+            const timerStatus = data.timerStatus || 'waiting'; 
+            const remainingTime = data.remainingTime !== undefined ? data.remainingTime : ((minutes * 60) + seconds) * 1000;
+            const color = data.color || (isStart ? '#eb5757' : '#a78bfa');
+
+            node.style.setProperty('--node-color', color);
+            node.innerHTML = `
+                <div class="check-mark">✅</div>
+                ${!isStart ? `<div class="port in" data-node-id="${id}"></div>` : ''}
+                <div class="port out" data-node-id="${id}"></div>
+                <div class="node-header">
+                    <div class="node-header-left"><span>${isStart ? '🚩' : '📄'}</span><span class="title-text">${title}</span></div>
+                    <input type="color" class="color-picker" value="${color}">
+                </div>
+                <div class="node-content">
+                    ${isStart ? `<div class="desc-text" style="font-size:0.85em; color:var(--text-sub); white-space:pre-line;">${d.startDesc}</div>` : `
+                        <input type="text" class="title-input" value="${title}" placeholder="${d.taskTitleHolder}">
+                        <textarea class="desc-input" placeholder="${d.taskDescHolder}">${desc}</textarea>
+                        <div class="time-input-wrap"><span class="target-lbl">${d.target}</span><input type="number" class="time-min" value="${minutes}" min="0"><span class="min-lbl">${d.min}</span><input type="number" class="time-sec" value="${seconds}" min="0" max="59"><span class="sec-lbl">${d.sec}</span></div>
+                    `}
+                </div>
+                <div class="node-timer-area">
+                    <div class="timer-display ${timerStatus === 'running' ? 'active' : ''}"><span class="timer-text">${isStart ? 'START' : formatTime(remainingTime)}</span></div>
+                    ${!isStart ? `<button class="play-btn ${timerStatus === 'running' ? 'running' : ''}">${d[timerStatus==='running'?'stop':(timerStatus==='done'?'reset':'startBtn')]}</button>` : ''}
+                </div>
+            `;
+            canvasContainer.appendChild(node);
+
+            const nodeData = { 
+                id, type, x, y, title, desc, minutes, seconds, timerStatus, remainingTime, lastTick: Date.now(), element: node, color,
+                getOutPoint: () => ({ x: nodeData.x + node.offsetWidth, y: nodeData.y + node.offsetHeight / 2 }),
+                getInPoint: () => ({ x: nodeData.x, y: nodeData.y + node.offsetHeight / 2 })
+            };
+            nodes.push(nodeData);
+
+            node.addEventListener('pointerdown', (e) => startNodeDrag(e, nodeData));
+            node.querySelector('.port.out').addEventListener('pointerdown', (e) => { 
+                e.stopPropagation(); linkDrag.active=true; linkDrag.fromNode=nodeData; tempLine.style.display='block'; 
+                e.target.setPointerCapture(e.pointerId);
+            });
+
+            if(!isStart) {
+                node.querySelector('.port.in').addEventListener('pointerdown', (e) => {
+                    e.stopPropagation();
+                    const linkIdx = links.findIndex(l => l.to === id);
+                    if(linkIdx !== -1) { 
+                        const sourceNode = nodes.find(n => n.id === links[linkIdx].from); links.splice(linkIdx, 1); 
+                        if(sourceNode) { linkDrag.active=true; linkDrag.fromNode=sourceNode; tempLine.style.display='block'; }
+                        updateConnections();
+                    }
+                });
+            }
+
+            node.querySelector('.color-picker').addEventListener('input', (e) => { nodeData.color = e.target.value; node.style.setProperty('--node-color', nodeData.color); updateConnections(); });
+
+            if (!isStart) {
+                node.querySelector('.title-input').addEventListener('input', (e) => { nodeData.title = e.target.value; node.querySelector('.title-text').innerText = nodeData.title; });
+                node.querySelector('.desc-input').addEventListener('input', (e) => nodeData.desc = e.target.value);
+                const updateTime = () => {
+                    nodeData.minutes = parseInt(node.querySelector('.time-min').value) || 0; nodeData.seconds = parseInt(node.querySelector('.time-sec').value) || 0;
+                    nodeData.remainingTime = ((nodeData.minutes * 60) + nodeData.seconds) * 1000;
+                    nodeData.timerStatus = 'waiting'; node.classList.remove('done-state'); updateNodeUI(nodeData);
+                };
+                node.querySelector('.time-min').addEventListener('change', updateTime); node.querySelector('.time-sec').addEventListener('change', updateTime);
+
+                node.querySelector('.play-btn').addEventListener('click', () => {
+                    if(nodeData.minutes === 0 && nodeData.seconds === 0) return;
+                    if (nodeData.timerStatus === 'waiting' || nodeData.timerStatus === 'paused') { nodeData.timerStatus = 'running'; nodeData.lastTick = Date.now(); node.classList.remove('done-state'); } 
+                    else if (nodeData.timerStatus === 'running') { nodeData.timerStatus = 'paused'; } 
+                    else if (nodeData.timerStatus === 'done') { nodeData.remainingTime = ((nodeData.minutes * 60) + nodeData.seconds) * 1000; nodeData.timerStatus = 'waiting'; node.classList.remove('done-state'); }
+                    updateNodeUI(nodeData);
+                });
+                if(timerStatus === 'done') node.classList.add('done-state');
+            }
+            selectNode(id); updateConnections(); return nodeData;
+        }
+
+        function formatTime(ms) {
+            if (ms <= 0) return dict[currentLang].wait;
+            const totalSec = Math.floor(ms / 1000); const h = String(Math.floor(totalSec / 3600)).padStart(2, '0'); const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0'); const s = String(totalSec % 60).padStart(2, '0');
+            return `${h}:${m}:${s}`;
+        }
+        function updateNodeUI(nodeData) {
+            const d = dict[currentLang];
+            if (nodeData.type === 'start') { nodeData.element.querySelector('.desc-text').innerText = d.startDesc; return; }
+            const timerText = nodeData.element.querySelector('.timer-text'); const playBtn = nodeData.element.querySelector('.play-btn');
+            nodeData.element.querySelector('.target-lbl').innerText = d.target; nodeData.element.querySelector('.min-lbl').innerText = d.min; nodeData.element.querySelector('.sec-lbl').innerText = d.sec;
+            if (nodeData.timerStatus === 'done') { timerText.innerText = d.done; playBtn.className = 'play-btn'; playBtn.innerText = d.reset; } 
+            else { timerText.innerText = nodeData.timerStatus === 'waiting' && nodeData.remainingTime <= 0 ? d.wait : formatTime(nodeData.remainingTime); playBtn.className = `play-btn ${nodeData.timerStatus === 'running' ? 'running' : ''}`; playBtn.innerText = nodeData.timerStatus === 'running' ? d.stop : d.startBtn; }
+        }
+
+        setInterval(() => {
+            const now = Date.now();
+            nodes.forEach(node => {
+                if (node.type === 'start' || node.timerStatus !== 'running') return;
+                node.remainingTime -= (now - node.lastTick); node.lastTick = now;
+                if (node.remainingTime <= 0) { node.remainingTime = 0; node.timerStatus = 'done'; node.element.classList.add('done-state'); playSound('done'); }
+                updateNodeUI(node);
+            });
+        }, 100);
+
+        function selectNode(id) { nodes.forEach(n => n.element.classList.remove('selected')); selectedNodeId = id; if (id) nodes.find(n => n.id === id)?.element.classList.add('selected'); }
+
+        function updateConnections() {
+            Array.from(canvas.children).forEach(child => { if (child.id !== 'temp-line') child.remove(); });
+            links.forEach((link) => {
+                const source = nodes.find(n => n.id === link.from); const target = nodes.find(n => n.id === link.to);
+                if (!source || !target) return;
+                const p1 = source.getOutPoint(); const p2 = target.getInPoint();
+                const offset = Math.max(50, Math.abs(p2.x - p1.x) / 2);
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', `M ${p1.x} ${p1.y} C ${p1.x + offset} ${p1.y}, ${p2.x - offset} ${p2.y}, ${p2.x} ${p2.y}`);
+                path.setAttribute('class', `connection-path`);
+                path.style.stroke = source.color;
+                canvas.appendChild(path);
+            });
+        }
+
+        document.getElementById('add-btn').addEventListener('click', () => { createNode('task', (window.innerWidth / 2 - panX) / scale - 150, (window.innerHeight / 2 - panY) / scale - 100); });
+
+        // --- 저장 / 불러오기 ---
+        document.getElementById('save-btn').addEventListener('click', () => {
+            const data = { 
+                nodes: nodes.map(n => ({ 
+                    id: n.id, type: n.type, x: n.x, y: n.y, title: n.title, desc: n.desc, 
+                    minutes: n.minutes, seconds: n.seconds, timerStatus: n.timerStatus, 
+                    remainingTime: n.remainingTime, color: n.color, width: n.element.style.width, height: n.element.style.height
+                })), 
+                links: links, todos: todos 
+            };
+            const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([JSON.stringify(data)], { type: "application/json" })); a.download = 'MyBlueprint.json'; a.click();
+        });
+        
+        document.getElementById('load-btn').addEventListener('click', () => document.getElementById('file-upload').click());
+        document.getElementById('file-upload').addEventListener('change', (e) => {
+            const file = e.target.files; if (!file) return; 
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const p = JSON.parse(event.target.result); 
+                    nodes.forEach(n => { n.element.remove(); }); 
+                    nodes = []; links = [];
+                    (p.nodes ? p.nodes : p).forEach(data => createNode(data.type, data.x, data.y, data));
+                    if (p.links) links = p.links; 
+                    if (p.todos) { todos = p.todos; renderTodos(); }
+                    scale = 1; panX = 0; panY = 0; updateTransform(); updateConnections();
+                } catch(err) { alert('올바른 파일 형식이 아닙니다.'); }
+            }; reader.readAsText(file); e.target.value = '';
+        });
+
+        createNode('start', 100, window.innerHeight / 2 - 100);
+        updateLanguage();
+
+        // --- 오디오 로직 ---
+        const audio = document.getElementById('audio-player');
+        const trackListEl = document.getElementById('track-list');
+        const musicPlayBtn = document.getElementById('music-play-btn');
+        const progressBar = document.getElementById('progress-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalTimeEl = document.getElementById('total-time');
+        const cdIcon = document.getElementById('spin-cd');
+        const volumeBar = document.getElementById('volume-bar');
+        const volToggleBtnIcon = document.getElementById('vol-toggle-btn');
+        
+        volumeBar.addEventListener('input', (e) => {
+            audio.volume = e.target.value;
+            if(audio.volume == 0) volToggleBtnIcon.innerText = '🔇';
+            else if(audio.volume < 0.5) volToggleBtnIcon.innerText = '🔉';
+            else volToggleBtnIcon.innerText = '🔊';
+        });
+        
+        let playlist = [
+            { name: "Love", url: "Love.mp3", duration: "..." },
+            { name: "Smile with me", url: "Smile with me.mp3", duration: "..." },
+            { name: "You can", url: "You can.mp3", duration: "..." },
+	    { name: "Slow Dance", url: "Slow Dance.mp3", duration: "..." }
+        ];
+        let currentTrackIdx = 0; 
+        
+        function fetchAudioDuration(trackObj, callback) {
+            const tempAudio = new Audio(trackObj.url);
+            tempAudio.addEventListener('loadedmetadata', () => {
+                trackObj.duration = formatAudioTime(tempAudio.duration); callback();
+            });
+            tempAudio.addEventListener('error', () => { trackObj.duration = "--:--"; callback(); });
+        }
+
+        function initDefaultPlaylist() {
+            let loaded = 0;
+            playlist.forEach(t => { fetchAudioDuration(t, () => { loaded++; if(loaded === playlist.length) renderPlaylist(); }); });
+            renderPlaylist();
+        }
+        initDefaultPlaylist();
+
+        document.getElementById('music-upload').addEventListener('change', (e) => {
+            const files = Array.from(e.target.files).filter(file => file.type.startsWith('audio/') || file.name.toLowerCase().endsWith('.mp3'));
+            if (files.length === 0) return;
+            const startIdx = playlist.length;
+            const newTracks = files.map(file => ({ name: file.name.replace(/\.[^/.]+$/, ""), url: URL.createObjectURL(file), duration: "..." }));
+            playlist = playlist.concat(newTracks);
+            renderPlaylist(); 
+            newTracks.forEach(t => { fetchAudioDuration(t, () => renderPlaylist()); });
+            playTrack(startIdx); e.target.value = '';
+        });
+
+        function renderPlaylist() { 
+            if(!playlist.length) return; 
+            trackListEl.innerHTML = playlist.map((t, idx) => `
+                <div class="track-item ${idx === currentTrackIdx ? 'playing' : ''}" onclick="playTrack(${idx})">
+                    <div class="track-name-wrap"><div class="visualizer"><span></span><span></span><span></span></div><span class="track-name">${idx+1}. ${t.name}</span></div>
+                    <span class="track-duration">${t.duration}</span>
+                </div>
+            `).join(''); 
+        }
+        
+        function updatePlayerUI() {
+            const playerEl = document.getElementById('music-player');
+            if (audio.paused) { musicPlayBtn.innerText = '▶'; cdIcon.classList.add('paused'); playerEl.classList.add('is-paused'); } 
+            else { musicPlayBtn.innerText = '⏸'; cdIcon.classList.remove('paused'); playerEl.classList.remove('is-paused'); }
+        }
+
+        function playTrack(idx) { 
+            if(idx < 0 || idx >= playlist.length) return; 
+            currentTrackIdx = idx; audio.src = playlist[idx].url; audio.volume = volumeBar.value; 
+            audio.play().then(() => updatePlayerUI()).catch(e => console.log("자동재생 대기중...")); 
+            renderPlaylist(); 
+        }
+        
+        musicPlayBtn.addEventListener('click', () => { 
+            if(!playlist.length) return; 
+            if(audio.paused) audio.play().then(() => updatePlayerUI()); else { audio.pause(); updatePlayerUI(); }
+        });
+        
+        document.getElementById('next-btn').addEventListener('click', () => playlist.length && playTrack((currentTrackIdx + 1) % playlist.length));
+        document.getElementById('prev-btn').addEventListener('click', () => playlist.length && playTrack((currentTrackIdx - 1 + playlist.length) % playlist.length));
+        audio.addEventListener('ended', () => playlist.length && playTrack((currentTrackIdx + 1) % playlist.length));
+
+        function formatAudioTime(sec) {
+            if(isNaN(sec)) return "0:00";
+            const m = Math.floor(sec / 60); const s = Math.floor(sec % 60).toString().padStart(2, '0'); return `${m}:${s}`;
+        }
+
+        audio.addEventListener('timeupdate', () => {
+            if(!audio.duration) return;
+            progressBar.value = (audio.currentTime / audio.duration) * 100;
+            currentTimeEl.innerText = formatAudioTime(audio.currentTime); totalTimeEl.innerText = formatAudioTime(audio.duration);
+        });
+
+        audio.addEventListener('loadedmetadata', () => { totalTimeEl.innerText = formatAudioTime(audio.duration); });
+        progressBar.addEventListener('input', (e) => { if(!audio.duration) return; audio.currentTime = (e.target.value / 100) * audio.duration; });
+
+        // --- 마우스 효과 & 모바일 분기 처리 ---
+        const cursor = document.getElementById('cursor'); const glow = document.getElementById('cursor-glow');
+        const isHoverableDevice = window.matchMedia("(hover: hover) and (pointer: fine)").matches;
+
+        if (isHoverableDevice) {
+            let effectX = window.innerWidth / 2, effectY = window.innerHeight / 2, cX = effectX, cY = effectY, gX = effectX, gY = effectY;
+            document.addEventListener('pointermove', (e) => { effectX = e.clientX; effectY = e.clientY; });
+            document.addEventListener('pointerdown', () => { cursor.style.transform = 'scale(0.8)'; glow.style.transform = 'translate(-50%, -50%) scale(0.8)'; });
+            document.addEventListener('pointerup', () => { cursor.style.transform = 'scale(1)'; glow.style.transform = 'translate(-50%, -50%) scale(1)'; });
+            
+            function animateCursor() { 
+                cX += (effectX - cX) * 0.6; cY += (effectY - cY) * 0.6; 
+                gX += (effectX - gX) * 0.15; gY += (effectY - gY) * 0.15; 
+                cursor.style.left = cX + 'px'; cursor.style.top = cY + 'px'; 
+                glow.style.left = gX + 'px'; glow.style.top = gY + 'px'; 
+                requestAnimationFrame(animateCursor); 
+            }
+            animateCursor();
+            
+            // 호버 이펙트를 pointer 이벤트로 재할당 (모바일 충돌 방지)
+            setInterval(() => {
+                document.querySelectorAll('a, button, .icon-btn').forEach(btn => {
+                    if(btn.dataset.hoverBound) return;
+                    btn.addEventListener('pointerenter', () => { glow.style.transform = 'translate(-50%, -50%) scale(1.6)'; glow.style.background = 'radial-gradient(circle, rgba(167, 139, 250, 0.7) 0%, rgba(167, 139, 250, 0) 70%)'; });
+                    btn.addEventListener('pointerleave', () => { glow.style.transform = 'translate(-50%, -50%) scale(1)'; glow.style.background = 'radial-gradient(circle, var(--accent-glow) 0%, rgba(167, 139, 250, 0) 70%)'; });
+                    btn.dataset.hoverBound = "true";
+                });
+            }, 1000);
+        }
+
+    </script>
+</body>
+</html>

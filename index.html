@@ -861,6 +861,8 @@
             if(audio.volume == 0) volToggleBtnIcon.innerText = '🔇';
             else if(audio.volume < 0.5) volToggleBtnIcon.innerText = '🔉';
             else volToggleBtnIcon.innerText = '🔊';
+			volToggleBtnIcon.addEventListener('click', () => {
+            document.getElementById('volume-pill').classList.toggle('expanded');
         });
         
         let playlist = [
